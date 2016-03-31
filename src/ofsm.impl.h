@@ -786,7 +786,7 @@ int _ofsm_simulation_event_generator(const char *fileName) {
         switch (t[0]) {
         case 'e':			//e[xit]
         {
-            _ofsm_debug_printf(4,  "G: Exiting...\n");
+            _ofsm_debug_printf(4,  "O: Exiting...\n");
             return exitCode;
         }
         break;
@@ -993,6 +993,7 @@ int main(int argc, char* argv[])
 					fsm = (group->fsms)[k];
 					fsm->flags = _OFSM_FLAG_INFINITE_SLEEP;
 					fsm->currentState = 0;
+					fsm->wakeupTime = 0;
 				}
 			}
         }
@@ -1078,7 +1079,7 @@ uint8_t idleSleepFlag = 0;
 		_ofsm_heartbeat_ms_us_proxy();
 #endif
     }
-    
+
     /* enable interrupts; disable sleep */
 	sei();
 	sleep_disable();
@@ -1105,11 +1106,11 @@ static inline void _ofsm_heartbeat_ms_us_proxy() {
 
 		/* timing debug helper */
 		/*
-		Serial.print(" _ofsmCurrentProxyTimeUs: "); 
+		Serial.print(" _ofsmCurrentProxyTimeUs: ");
 		Serial.print(_ofsmCurrentProxyTimeUs);
-		Serial.println(); 
-		delay(50); 
-		cli(); 
+		Serial.println();
+		delay(50);
+		cli();
 		*/
 	}
 }
@@ -1119,7 +1120,7 @@ static inline void _ofsm_enter_idle_sleep(unsigned long sleepPeriodUs) {
 
 	/* timing debug helper */
 	/*
-	Serial.print("ISUs: "); 
+	Serial.print("ISUs: ");
 	Serial.print(sleepPeriodUs);
 	Serial.println();
 	delay(50);
@@ -1152,7 +1153,7 @@ extern volatile unsigned long timer0_overflow_count; /*Arduino timer0 overflow c
 
 static inline void _ofsm_wdt_vector() {
     /*try to update Arduino timer variables, to keep time relatively correct.
-    if deep sleep was interrupted by external source, 
+    if deep sleep was interrupted by external source,
     then time will not be updated as we don't know how big of a delay was between getting to sleep and external interrupt
     */
 	if(_ofsmFlags & _OFSM_FLAG_OFSM_IN_DEEP_SLEEP) {
@@ -1170,7 +1171,7 @@ ISR(WDT_vect) {
 /*chip specific MAX watchdog sleep period*/
 #ifndef WDP3
 #	define _OFSM_MAX_SLEEP_MASK  0B111 /*2 sec*/
-#else 
+#else
 #   define _OFSM_MAX_SLEEP_MASK 0B1001 /*8 sec*/
 #endif
 
@@ -1183,7 +1184,7 @@ static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodMs) {
 	Serial.print(sleepPeriodMs);
 	Serial.println();
 	delay(50);
-	cli(); 
+	cli();
 	*/
 
 	if(sleepPeriodMs >= 8192L) {
@@ -1205,7 +1206,7 @@ static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodMs) {
 	wdt_reset();  /* prepare */
 	WDTCSR |= ((1 << WDCE) | (1 << WDE)); /*enable change; timing sequence goes from here*/
 	WDTCSR = ((1 << WDIE) | (wdtMask));	  /* set interrupt mode, set prescaler bits (2sec) */
-	
+
 	/* turn off brown-out detector*/
 	sleep_bod_disable();
 
