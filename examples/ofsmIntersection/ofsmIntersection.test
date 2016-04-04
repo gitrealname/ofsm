@@ -1,0 +1,16 @@
+//ofsmIntersection unit tests.
+//Interactive simulation compiler cmd: g++ -Wall -std=c++11 -fexceptions -std=c++11 -I../../src -g  -o ofsmIntersection -x c++ ofsmIntersection.ino
+//Unit Test compiler cmd: g++ -Wall -std=c++11 -fexceptions -std=c++11 -DUTEST  -I../../src -g  -o ofsmIntersection -x c++ ofsmIntersection.ino
+//Event queue size = 1;
+//States: 
+//  TBI
+//Events: 
+//  0 - Timeout
+//----------------------------------------------
+
+p,--- Unit test implementation is pending...
+reset // re-start
+//TBI: status			= -O[iD]-G(0)[.,000]-F(0)[ipo]-S(1)-TW[0000000000.,O:0000001000.,F:0000001000.]
+p
+
+exit

@@ -19,7 +19,7 @@ OFSMTransition transitionTable[][1 + InfiniteDelay] = {
     { { 0,			  0  },{ DummyHandler, S0 },{ PreventTransitionHandler, S0 },{ InifiniteDelayHandler, S0 } }, //S1
 };
 
-OFSM_DECLARE_FSM(DefaultFsm, transitionTable, 1 + InfiniteDelay, handleInit, NULL);
+OFSM_DECLARE_FSM(DefaultFsm, transitionTable, 1 + InfiniteDelay, NULL, NULL, 0);
 OFSM_DECLARE_GROUP_1(MainGroup, EVENT_QUEUE_SIZE, DefaultFsm);
 OFSM_DECLARE_1(MainGroup);
 

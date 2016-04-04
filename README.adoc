@@ -5,6 +5,8 @@ The OFSM library implements state machine infrastructure that encourages to crea
 For more information about this library please visit us at
 https://github.com/gitrealname/ofsm
 
+== Documentation == 
+Documentation is located in https://github.com/gitrealname/ofsm/blob/master/src/ofsm.h[ofsm.h]
 == License ==
 
 Copyright (c) 2016 gitrealname.  All right reserved.

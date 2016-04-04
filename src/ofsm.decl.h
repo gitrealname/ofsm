@@ -80,6 +80,8 @@ Common defines
 #   define OFSM_CONFIG_TICK_US 1000L /* 1 millisecond */
 #endif
 
+#define OFSM_NOP_HANDLER (OFSMHandler)(-1)
+
 /*---------------------
 Simulation defines
 -----------------------*/
@@ -216,7 +218,7 @@ static inline void _ofsm_heartbeat_ms_us_proxy() __attribute__((__always_inline_
 #undef OFSM_CONFIG_SIMULATION_SCRIPT_MODE_WAKEUP_TYPE
 
 
-#ifndef sbi 
+#ifndef sbi
 # define sbi(reg, bitToSet) (reg |= (1 << bitToSet))
 #endif
 #ifndef cbi
@@ -306,6 +308,10 @@ struct OFSM {
     uint8_t             flags;
     _OFSM_TIME_DATA_TYPE wakeupTime;
     uint8_t             currentState;
+#ifdef OFSM_CONFIG_SIMULATION
+    uint8_t             simulationInitialState; /* store initial state, so that it can be restored during simulation reset*/
+#endif /* OFSM_CONFIG_SIMULATION */
+    uint8_t             skipNextEventCode;     /* skip (once) processing of specified event event code */
 };
 
 struct OFSMState {
@@ -335,7 +341,7 @@ Flags
 //Common flags
 #define _OFSM_FLAG_INFINITE_SLEEP			0x1
 #define _OFSM_FLAG_SCHEDULED_TIME_OVERFLOW	0x2 /*indicate if wakeup time is scheduled after post overflow of time register*/
-#define _OFSM_FLAG_ALLOW_DEEP_SLEEP         0x4 
+#define _OFSM_FLAG_ALLOW_DEEP_SLEEP         0x4
 #define _OFSM_FLAG_ALL (_OFSM_FLAG_INFINITE_SLEEP | _OFSM_FLAG_SCHEDULED_TIME_OVERFLOW | _OFSM_FLAG_ALLOW_DEEP_SLEEP)
 
 //FSM Flags
@@ -363,13 +369,13 @@ Macros
 #define fsm_set_transition_delay_deep_sleep(delayTicks) (fsm_set_transition_delay(delayTicks), (_ofsmCurrentFsmState->fsm)[0].flags |= _OFSM_FLAG_ALLOW_DEEP_SLEEP)
 #define fsm_set_infinite_delay()					((_ofsmCurrentFsmState->fsm)[0].flags |= _OFSM_FLAG_INFINITE_SLEEP)
 #define fsm_set_infinite_delay_deep_sleep()         (fsm_set_infinite_delay(), (_ofsmCurrentFsmState->fsm)[0].flags |= _OFSM_FLAG_ALLOW_DEEP_SLEEP)
-#define fsm_set_next_state(nextStateId)			((_ofsmCurrentFsmState->fsm)[0].flags |= _OFSM_FLAG_FSM_NEXT_STATE_OVERRIDE, (_ofsmCurrentFsmState->_ofsmCurrentFsmState)[0].currentState = nextStateId)
+#define fsm_set_next_state(nextStateId)			    ((_ofsmCurrentFsmState->fsm)[0].flags |= _OFSM_FLAG_FSM_NEXT_STATE_OVERRIDE, (_ofsmCurrentFsmState->_ofsmCurrentFsmState)[0].currentState = nextStateId)
 
 #define fsm_get_private_data()						((_ofsmCurrentFsmState->fsm)[0].fsmPrivateInfo)
-#define fsm_get_private_data_cast(castType)		((castType)((_ofsmCurrentFsmState->fsm)[0].PrivateInfo)
+#define fsm_get_private_data_cast(castType)		    ((castType)((_ofsmCurrentFsmState->fsm)[0].fsmPrivateInfo))
 #define fsm_get_state()								((_ofsmCurrentFsmState->fsm)[0].currentState)
 #define fsm_get_time_left_before_timeout()          (_ofsmCurrentFsmState->timeLeftBeforeTimeout)
-#define fsm_get_fsm_index()							(_ofsmCurrentFsmState->index)
+#define fsm_get_fsm_index()							(_ofsmCurrentFsmState->fsmIndex)
 #define fsm_get_group_index()						(_ofsmCurrentFsmState->groupIndex)
 #define fsm_get_event_code()						((_ofsmCurrentFsmState->e)[0].eventCode)
 #ifdef OFSM_CONFIG_SUPPORT_EVENT_DATA
@@ -378,7 +384,9 @@ Macros
 #	define fsm_get_event_data()						0
 #endif
 #define fsm_queue_group_event(forceNewEvent, eventCode, eventData) \
-    ofsm_queue_group_event(fsm_get_group_index(), bool forceNewEvent, uint8_t eventCode, OFSM_CONFIG_EVENT_DATA_TYPE eventData)
+    ofsm_queue_group_event(fsm_get_group_index(), forceNewEvent, eventCode, eventData)
+#define fsm_queue_group_event_exclude_self(forceNewEvent, eventCode, eventData) \
+    (ofsm_queue_group_event(fsm_get_group_index(), forceNewEvent, eventCode, eventData), (_ofsmCurrentFsmState->fsm)[0].skipNextEventCode = eventCode)
 
 
 #define ofsm_get_time(outCurrentTime, outTimeFlags) \
@@ -442,25 +450,59 @@ Setup helper macros
 #define _OFSM_DECLARE_N(n, ...)\
     _OFSM_DECLARE_GROUP_ARRAY_##n(__VA_ARGS__);
 
-#ifdef OFSM_CONFIG_SUPPORT_INITIALIZATION_HANDLER
-#   define OFSM_DECLARE_FSM(fsmId, transitionTable, transitionTableEventCount, initializationHandler, fsmPrivateDataPtr) \
+#ifdef OFSM_CONFIG_SIMULATION
+#   ifdef OFSM_CONFIG_SUPPORT_INITIALIZATION_HANDLER
+#       define OFSM_DECLARE_FSM(fsmId, transitionTable, transitionTableEventCount, initializationHandler, fsmPrivateDataPtr, initialState) \
         OFSM _ofsm_decl_fsm_##fsmId = {\
                 (OFSMTransition**)transitionTable, 	/*transitionTable*/ \
                 transitionTableEventCount,			/*transitionTableEventCount*/ \
                 initializationHandler,				/*initHandler*/ \
                 fsmPrivateDataPtr,					/*fsmPrivateInfo*/ \
-                _OFSM_FLAG_INFINITE_SLEEP           /*flags*/ \
+                _OFSM_FLAG_INFINITE_SLEEP,          /*flags*/ \
+                0,                                  /*wakeup time*/ \
+                initialState,                       /*initial state*/ \
+                initialState,                       /*simulation initial state*/ \
+                (uint8_t)-1                         /*skipNextEventCode*/ \
         };
-#else
-#   define OFSM_DECLARE_FSM(fsmId, transitionTable, transitionTableEventCount, initializationHandler, fsmPrivateDataPtr) \
+#   else
+#       define OFSM_DECLARE_FSM(fsmId, transitionTable, transitionTableEventCount, initializationHandler, fsmPrivateDataPtr, initialState) \
         OFSM _ofsm_decl_fsm_##fsmId = {\
                 (OFSMTransition**)transitionTable, 	/*transitionTable*/ \
                 transitionTableEventCount,			/*transitionTableEventCount*/ \
                 fsmPrivateDataPtr,					/*fsmPrivateInfo*/ \
-                _OFSM_FLAG_INFINITE_SLEEP           /*flags*/ \
+                _OFSM_FLAG_INFINITE_SLEEP,          /*flags*/ \
+                0,                                  /*wakeup time*/ \
+                initialState,                       /*current state*/ \
+                initialState,                       /*simulation initial state*/ \
+                (uint8_t)-1                         /*skipNextEventCode*/ \
         };
-#endif
-
+#   endif
+#else
+#   ifdef OFSM_CONFIG_SUPPORT_INITIALIZATION_HANDLER
+#       define OFSM_DECLARE_FSM(fsmId, transitionTable, transitionTableEventCount, initializationHandler, fsmPrivateDataPtr, initialState) \
+        OFSM _ofsm_decl_fsm_##fsmId = {\
+                (OFSMTransition**)transitionTable, 	/*transitionTable*/ \
+                transitionTableEventCount,			/*transitionTableEventCount*/ \
+                initializationHandler,				/*initHandler*/ \
+                fsmPrivateDataPtr,					/*fsmPrivateInfo*/ \
+                _OFSM_FLAG_INFINITE_SLEEP,          /*flags*/ \
+                0,                                  /*wakeup time*/ \
+                initialState,                       /*current state*/ \
+                (uint8_t)-1                         /*skipNextEventCode*/ \
+        };
+#   else
+#       define OFSM_DECLARE_FSM(fsmId, transitionTable, transitionTableEventCount, initializationHandler, fsmPrivateDataPtr, initialState) \
+        OFSM _ofsm_decl_fsm_##fsmId = {\
+                (OFSMTransition**)transitionTable, 	/*transitionTable*/ \
+                transitionTableEventCount,			/*transitionTableEventCount*/ \
+                fsmPrivateDataPtr,					/*fsmPrivateInfo*/ \
+                _OFSM_FLAG_INFINITE_SLEEP,          /*flags*/ \
+                0,                                  /*wakeup time*/ \
+                initialState                        /*current state*/ \
+                (uint8_t)-1                         /*skipNextEventCode*/ \
+        };
+#   endif
+#endif /* OFSM_CONFIG_SIMULATION*/
 #define OFSM_DECLARE_GROUP_1(grpId, eventQueueSize, fsmId0) _OFSM_DECLARE_GROUP_N(1, grpId, eventQueueSize, fsmId0);
 #define OFSM_DECLARE_GROUP_2(grpId, eventQueueSize, fsmId0, fsmId1) _OFSM_DECLARE_GROUP_N(2, grpId, eventQueueSize, fsmId0, fsmId1);
 #define OFSM_DECLARE_GROUP_3(grpId, eventQueueSize, fsmId0, fsmId1, fsmId2) _OFSM_DECLARE_GROUP_N(3, grpId, eventQueueSize, fsmId0, fsmId1, fsmId2);

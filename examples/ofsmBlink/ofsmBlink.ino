@@ -18,7 +18,7 @@ OFSMTransition transitionTable[][1 + Timeout] = {
     { { OffHandler,	On  } }  /*Off State*/
 };
 
-OFSM_DECLARE_FSM(DefaultFsm, transitionTable, 1 + Timeout, NULL, NULL);
+OFSM_DECLARE_FSM(DefaultFsm, transitionTable, 1 + Timeout, NULL, NULL, On);
 OFSM_DECLARE_GROUP_1(MainGroup, EVENT_QUEUE_SIZE, DefaultFsm);
 OFSM_DECLARE_1(MainGroup);
 

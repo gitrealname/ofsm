@@ -12,52 +12,53 @@
 //----------------------------------------------
 
 p,--- Initial state: queues are empty, sitting in state 0 in infinite sleep ('I' flag set on both OFSM and FSM).
+reset //make sure we start fresh
 status = -O[Id]-G(0)[.,000]-F(0)[Ipo]-S(0)-TW[0000000000.,O:0000000000.,F:0000000000.]  
-reset //cleanup after self
 p
 p,--- Same event replaces the same one in the queue by default.
+reset
 queue,1		//first event
 queue,1		//the same event, group event count is expected to be 1
 status = -O[Id]-G(0)[.,001]-F(0)[Ipo]-S(0)-TW[0000000000.,O:0000000000.,F:0000000000.]
-reset
 p
 p,--- When event is forced it takes new space in event queue.
+reset
 queue,1,0,0	 //queue Normal transition event
 queue,f,1,0  //force new event even though event is the same. Group event count expected to be 2.
 status = -O[Id]-G(0)[.,002]-F(0)[Ipo]-S(0)-TW[0000000000.,O:0000000000.,F:0000000000.]
-reset
 p
 p,--- When group even queue overflows, event gets dropped.
+reset
 queue,f,1	//1 of 3
 queue,f,1   //2 of 3
 queue,f,1	//3 of 3; group event queue overflow flag gets set.
 status = -O[Id]-G(0)[!,003]-F(0)[Ipo]-S(0)-TW[0000000000.,O:0000000000.,F:0000000000.]
 queue,f,1   //overflow, event should be dropped. No change in queue size
 status = -O[Id]-G(0)[!,003]-F(0)[Ipo]-S(0)-TW[0000000000.,O:0000000000.,F:0000000000.]
-reset
 p
 p, --- Timeout event while in infinite sleep, event should be dropped; no changes in the state.
+reset
 status = -O[Id]-G(0)[.,000]-F(0)[Ipo]-S(0)-TW[0000000000.,O:0000000000.,F:0000000000.]
 queue,0
 wakeup
 status = -O[Id]-G(0)[.,000]-F(0)[Ipo]-S(0)-TW[0000000000.,O:0000000000.,F:0000000000.]
-reset
 p
 p, --- When transitioning to state which doesn't have timeout handler, FSM gets into infinite sleep.
+reset
 queue,1  //from S0 -> S1, which doesn't have timeout handler
 wakeup   //make one step through FSM
 status = -O[Id]-G(0)[.,000]-F(0)[Ipo]-S(1)-TW[0000000000.,O:0000000000.,F:0000000000.]
-reset
 p
 p, --- When transitioning to state, wakeup time should be set; It should be no 'I' (infinite sleep) flag set.
+reset
 queue,1  //from S0 -> S1, which doesn't have timeout handler
 wakeup   //make one step through FSM
 queue,1  //from S1 -> S1, timeout is determined by OFSM_CONFIG_DEFAULT_STATE_TRANSITION_DELAY which is expected to be = 1
 wakeup
 status = -O[id]-G(0)[.,000]-F(0)[ipo]-S(0)-TW[0000000000.,O:0000000001.,F:0000000001.]
-reset
 p
 p, --- Until wakeup time is reached, timeout event gets dropped.
+reset
 queue,1  //from S0 -> S1, which doesn't have timeout handler
 wakeup   //make one step through FSM
 queue,1  //from S1 -> S0, timeout is determined by OFSM_CONFIG_DEFAULT_STATE_TRANSITION_DELAY which is expected to be = 1
@@ -70,9 +71,9 @@ heartbeat,1 //as wakeup time reached, heartbeat will queue timeout event
 status = -O[id]-G(0)[.,001]-F(0)[ipo]-S(0)-TW[0000000001.,O:0000000001.,F:0000000001.]
 wakeup  //let FSM process an event, it should result in transition S0 -> S1; since S1 doesn't have timeout handler, FSM is expected to get into Infinite sleep.
 status = -O[Id]-G(0)[.,000]-F(0)[Ipo]-S(1)-TW[0000000001.,O:0000000000.,F:0000000000.]
-reset
 p
 p, --- When handler calls fsm_prevent_transition() - no transition should take place and wakeup time should not change.
+reset
 queue,1  //from S0 -> S1, which doesn't have timeout handler
 wakeup   //make one step through FSM
 queue,1  //from S1 -> S0, timeout is determined by OFSM_CONFIG_DEFAULT_STATE_TRANSITION_DELAY which is expected to be = 1
@@ -81,9 +82,7 @@ status = -O[id]-G(0)[.,000]-F(0)[ipo]-S(0)-TW[0000000000.,O:0000000001.,F:000000
 queue,2 //generate PreventTransition event, after wakeup 'P' (prevented) flag should be set.
 wakeup
 status = -O[id]-G(0)[.,000]-F(0)[iPo]-S(0)-TW[0000000000.,O:0000000001.,F:0000000001.]
-reset
 p
-
 p, --- Exiting test script ----
 //delay,10000
 exit

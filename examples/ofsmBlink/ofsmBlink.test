@@ -2,30 +2,26 @@
 //Interactive simulation compiler cmd: g++ -Wall -std=c++11 -fexceptions -std=c++11 -I../../src -g  -o ofsmBlink -x c++ ofsmBlink.ino
 //Unit Test compiler cmd: g++ -Wall -std=c++11 -fexceptions -std=c++11 -DUTEST  -I../../src -g  -o ofsmBlink -x c++ ofsmBlink.ino
 //Event queue size = 1;
-//States:
+//States: 
 //  0 - On (for 1000 ticks)
 //  1 - Off (for 500 ticks)
-//Events:
+//Events: 
 //  0 - Timeout
 //----------------------------------------------
 
+p,--- After 900 ticks it is still awaiting for transition into OFF state; 
+reset 
+hearbeat, 900
+wakeup			//let FSM process single step
+status			= -O[iD]-G(0)[.,000]-F(0)[ipo]-S(1)-TW[0000000900.,O:0000001000.,F:0000001000.]
+p
+
 p,--- Initial state is OFF as state ON was processed during startup, Entering into OFF state after 1000 ticks, deep sleep mode (D)
+reset 
 status			= -O[iD]-G(0)[.,000]-F(0)[ipo]-S(1)-TW[0000000000.,O:0000001000.,F:0000001000.]
 reset //cleanup after self
 p
 
-p,--- After 900 ticks it is still awaiting for transition into OFF state;
-hearbeat, 900
-wakeup			//let FSM process single step
-status			= -O[iD]-G(0)[.,000]-F(0)[ipo]-S(1)-TW[0000000900.,O:0000001000.,F:0000001000.]
-reset
-p
 
-p,--- After 1000 ticks, transition to state ON with delay of 500;
-hearbeat, 1000
-wakeup			//let FSM process single step
-status			= -O[iD]-G(0)[.,000]-F(0)[ipo]-S(0)-TW[0000001000.,O:0000001500.,F:0000001500.]
-//reset
-p
 
 exit
