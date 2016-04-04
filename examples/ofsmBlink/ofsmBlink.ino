@@ -51,7 +51,7 @@ void OnHandler() {
 #if OFSM_MCU_BLOCK
 	digitalWrite(ledPin, HIGH);
 	//Serial.println("On");
-	delay(10);
+	//delay(10);
 #endif
 }
 
@@ -61,7 +61,7 @@ void OffHandler() {
 #if OFSM_MCU_BLOCK
 	digitalWrite(ledPin, LOW);
 	//Serial.println("Off");
-	delay(10);
+	//delay(10);
 #endif
 }
 
