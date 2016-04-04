@@ -83,8 +83,8 @@ OFSM_DECLARE_2(CrosswalkGrp, RoadGrp);
 /* Setup */
 void setup() {
 #if OFSM_MCU_BLOCK
-  /* set up Serial library at 9600 bps */
-  Serial.begin(9600);
+	/* set up Serial library at 9600 bps */
+	//Serial.begin(9600);
     pinMode(road1LightPin, OUTPUT);
     pinMode(road2LightPin, OUTPUT);
 #endif
@@ -104,26 +104,26 @@ void OnRoadGreen() {
     fsm_set_transition_delay_deep_sleep(GREEN_LIGHT_TIMEOUT);
 #if OFSM_MCU_BLOCK
     digitalWrite(ri->lightPin, HIGH); /* turn on light */
-    Serial.print("R("); Serial.print(fsm_get_fsm_index() + 1); Serial.println(") On.");
+    //Serial.print("R("); Serial.print(fsm_get_fsm_index() + 1); Serial.println(") On.");
 #endif /* OFSM_MCU_BLOCK */
     ofsm_debug_printf(1, "Road(%i): Light ON. (pin: %i).\n", fsm_get_fsm_index() + 1, ri->lightPin);
 }
 void OnRoadClearIntersection() {
-     ofsm_queue_group_event(CrosswalkGrp, false, DISABLE_BUTTON, 0); /* notify crosswalk FSM that it must disable button */
-     fsm_set_transition_delay_deep_sleep(CLEAR_INTERSECTION_TIMEOUT);
+    ofsm_queue_group_event(CrosswalkGrp, false, DISABLE_BUTTON, 0); /* notify crosswalk FSM that it must disable button */
+    fsm_set_transition_delay_deep_sleep(CLEAR_INTERSECTION_TIMEOUT);
 #if OFSM_MCU_BLOCK
-    Serial.print("R("); Serial.print(fsm_get_fsm_index() + 1); Serial.println(") Clearing intersection...");
+	//Serial.print("R("); Serial.print(fsm_get_fsm_index() + 1); Serial.println(") Clearing intersection...");
 #endif /* OFSM_MCU_BLOCK */
-     ofsm_debug_printf(1, "Road(%i): Clearing intersection...\n", fsm_get_fsm_index() + 1);
+    ofsm_debug_printf(1, "Road(%i): Clearing intersection...\n", fsm_get_fsm_index() + 1);
 }
 void OnRoadRed() {
     RoadInfo *ri = fsm_get_private_data_cast(RoadInfo*);
     /* notify "inactive" road FSM that it has to go into "traffic mode", exclude this FSM instance from processing of this event */
     fsm_queue_group_event_exclude_self(false, GO_GREEN, 0);
-    fsm_set_infinite_delay();
+    fsm_set_infinite_delay_deep_sleep();
 #if OFSM_MCU_BLOCK
     digitalWrite(ri->lightPin, LOW); /* turn off light */
-    Serial.print("R("); Serial.print(fsm_get_fsm_index() + 1); Serial.println(") Off.");
+    //Serial.print("R("); Serial.print(fsm_get_fsm_index() + 1); Serial.println(") Off.");
 #endif /* OFSM_MCU_BLOCK */
     ofsm_debug_printf(1, "Road(%i): Light OFF. (pin: %i).\n", fsm_get_fsm_index() + 1, ri->lightPin);
 }
@@ -133,7 +133,7 @@ void OnCrosswalkButtonPressed(){
     /* queue event into Road FSM group to indicates that pedestrian is awaiting */
     ofsm_queue_group_event(RoadGrp, false, PEDESTRIAN_AWAITS, 0);
 #if OFSM_MCU_BLOCK
-    Serial.println("Crosswalk: Button pressed.");
+    //Serial.println("Crosswalk: Button pressed.");
 #endif /* OFSM_MCU_BLOCK */
     ofsm_debug_printf(1, "Crosswalk: Button pressed.\n");
 }
@@ -147,7 +147,7 @@ void OnCrosswalkArmButton(){
     /* attach button press interrupt */
     pinMode(buttonPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(buttonPin), ISR_ButtonPress, FALLING);
-    Serial.println("Crosswalk: Arming button...");
+    //Serial.println("Crosswalk: Arming button...");
 #endif /* OFSM_MCU_BLOCK */
     ofsm_debug_printf(1, "Crosswalk: Arming button...\n");
 }
@@ -156,7 +156,7 @@ void OnCrosswalkDisableButton(){
 #if OFSM_MCU_BLOCK
     /* attach button press interrupt */
     detachInterrupt(digitalPinToInterrupt(buttonPin));
-    Serial.println("Crosswalk: Disarming button...");
+    //Serial.println("Crosswalk: Disarming button...");
 #endif /* OFSM_MCU_BLOCK */
     ofsm_debug_printf(1, "Crosswalk: Disarming button...\n");
 }
