@@ -23,8 +23,8 @@ OFSM_DECLARE_GROUP_1(MainGroup, EVENT_QUEUE_SIZE, DefaultFsm);
 OFSM_DECLARE_1(MainGroup);
 
 #define ledPin 13
-#define ticksOn  1000 /*number of ticks to be in On state*/
-#define ticksOff 500 /*number of ticks to be in Off state*/
+#define ticksOn  1000 /* number of ticks to be in On state */
+#define ticksOff 500 /* number of ticks to be in Off state */
 
 /* Setup */
 void setup() {
