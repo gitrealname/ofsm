@@ -3,7 +3,7 @@
 #define __OFSM_IMPL_H_
 
 #ifndef OFSM_CONFIG_SIMULATION
-/* #include <HardwareSerial.h> //may be included for debugging purposes  */
+#include <HardwareSerial.h> //may be included for debugging purposes
 #	ifndef OFSM_CONFIG_CUSTOM_HEARTBEAT_PROVIDER
 #		include <Arduino.h>
 #	endif
@@ -1042,11 +1042,19 @@ static inline void  _ofsm_deep_sleep_disable_peripheral() {
     power_adc_disable();
     power_spi_disable();
     power_twi_disable();
+#ifdef power_usart1_disable
+    power_usart1_disable();
+#endif
+    power_usart0_disable();
 }
 #endif
 
 #ifdef OFSM_IMPL_DEEP_SLEEP_ENABLE_PERIPHERAL
 static inline void _ofsm_deep_sleep_enable_peripheral() {
+    power_usart0_enable();
+#ifdef power_usart1_disable
+    power_usart1_enable();
+#endif
     power_twi_enable();
     power_spi_enable();
     power_adc_enable();
@@ -1054,7 +1062,7 @@ static inline void _ofsm_deep_sleep_enable_peripheral() {
 #endif
 
 static inline void _ofsm_enter_sleep() {
-uint8_t idleSleepFlag = 0;
+uint8_t sleepFlag = 0;
 
 	cli(); /*disable interrupts*/
     while(!(_ofsmFlags & _OFSM_FLAG_OFSM_EVENT_QUEUED)) {
@@ -1066,15 +1074,16 @@ uint8_t idleSleepFlag = 0;
         unsigned long sleepPeriodMs = (unsigned long)(sleepPeriodTick * OFSM_CONFIG_TICK_US)/1000L;
 #endif
         if(_ofsmFlags & _OFSM_FLAG_ALLOW_DEEP_SLEEP && sleepPeriodMs >= 16) {
+            sleepFlag |= 2;
 			OFSM_CONFIG_CUSTOM_DEEP_SLEEP_DISABLE_PERIPHERAL_FUNC();
 			_ofsm_enter_deep_sleep(sleepPeriodMs);
             /*when coming out of deep sleep we always re-enable peripherals right away, as we cannot guarantee next sleep will be a deep sleep again*/
 			OFSM_CONFIG_CUSTOM_DEEP_SLEEP_ENABLE_PERIPHERAL_FUNC();
         } else {
-            if(!idleSleepFlag) {
+            if(sleepFlag & 1) {
 				OFSM_CONFIG_CUSTOM_IDLE_SLEEP_DISABLE_PERIPHERAL_FUNC();
             }
-            idleSleepFlag |= 1;
+            sleepFlag |= 1;
 			_ofsm_enter_idle_sleep(sleepPeriodTick * OFSM_CONFIG_TICK_US);
             /*after idle sleep we still don't know if we are going to continue sleep or not, postpone enable peripherals until after the sleep*/
         }
@@ -1090,7 +1099,7 @@ uint8_t idleSleepFlag = 0;
     /* enable interrupts; disable sleep */
 	sei();
 	sleep_disable();
-    if(idleSleepFlag) {
+    if(sleepFlag & 1) {
 		OFSM_CONFIG_CUSTOM_IDLE_SLEEP_ENABLE_PERIPHERAL_FUNC();
     }
 }
@@ -1183,16 +1192,7 @@ ISR(WDT_vect) {
 #endif
 
 static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodMs) {
-    uint8_t wdtMask = 0;
-
-	/* timing debug helper */
-	/*
-	Serial.print("DSMs: ");
-	Serial.print(sleepPeriodMs);
-	Serial.println();
-	delay(50);
-	cli();
-	*/
+    uint16_t wdtMask = 0;
 
 	if(sleepPeriodMs >= 8192L) {
 		wdtMask = _OFSM_MAX_SLEEP_MASK; /*8 sec*/
@@ -1207,12 +1207,37 @@ static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodMs) {
 	}
 	_ofsmFlags |= _OFSM_FLAG_OFSM_IN_DEEP_SLEEP; /*set flag indicating deep sleep. It must be cleared on wakeup or event queuing.*/
 
+    /*adjust wdtMask: shift bit: 3 into WDP3 position (bit: 5)*/
+    wdtMask = (((wdtMask & 0B1000) << 2) | (wdtMask & 0B111));
+
+	/* timing debug helper */
+	/*
+	sei();
+	Serial.print("DSMs: ");
+	Serial.print(sleepPeriodMs);
+	Serial.print(" wdtMask: ");
+	Serial.print(wdtMask, BIN);
+	Serial.println();
+	delay(50);
+	cli();
+	*/
+
 	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
 	sleep_enable();
+
+    /* NOTE: without this delay, deep sleep may fail.
+    * Having this 2us timeout causes yielding to outstanding interrupt handlers, to let them finish.
+    * This is pure speculation at this point as I don't understand what really is going on.
+    * And why it does not work without this delay
+    * Further research is needed.*/
+	sei();
+    delayMicroseconds(2);
+	cli();
+
 	MCUSR &= ~(1 << WDRF); /*Watchdog Reset Flag*/
 	wdt_reset();  /* prepare */
 	WDTCSR |= ((1 << WDCE) | (1 << WDE)); /*enable change; timing sequence goes from here*/
-	WDTCSR = ((1 << WDIE) | (wdtMask));	  /* set interrupt mode, set prescaler bits (2sec) */
+	WDTCSR = ((1 << WDIE) | wdtMask);   /* set interrupt mode, set prescaler */
 
 	/* turn off brown-out detector*/
 	sleep_bod_disable();
