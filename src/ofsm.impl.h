@@ -3,7 +3,7 @@
 #define __OFSM_IMPL_H_
 
 #ifndef OFSM_CONFIG_SIMULATION
-#include <HardwareSerial.h> //may be included for debugging purposes
+/*#include <HardwareSerial.h> //may be included for debugging purposes*/
 #	ifndef OFSM_CONFIG_CUSTOM_HEARTBEAT_PROVIDER
 #		include <Arduino.h>
 #	endif
@@ -18,7 +18,7 @@ Global variables
 OFSMGroup**				_ofsmGroups;
 uint8_t                 _ofsmGroupCount;
 OFSMState*				_ofsmCurrentFsmState;
-volatile uint8_t        _ofsmFlags;
+volatile uint16_t       _ofsmFlags;
 volatile _OFSM_TIME_DATA_TYPE  _ofsmWakeupTime;
 volatile _OFSM_TIME_DATA_TYPE  _ofsmTime;
 
@@ -57,12 +57,12 @@ static inline void _ofsm_fsm_process_event(OFSM *fsm, uint8_t groupIndex, uint8_
     //check if wake time has been reached, wake up immediately if not timeout event, ignore non-handled   events.
     t = _OFSM_GET_TRANSTION(fsm, e->eventCode);
     wakeupTimeGTcurrentTime = _OFSM_TIME_A_GT_B(fsm->wakeupTime, (fsm->flags & _OFSM_FLAG_SCHEDULED_TIME_OVERFLOW), currentTime, (timeFlags & _OFSM_FLAG_OFSM_TIMER_OVERFLOW));
-    if (!t->eventHandler || (0 == e->eventCode && (((fsm->flags & _OFSM_FLAG_INFINITE_SLEEP) && !(_ofsmFlags & _OFSM_FLAG_OFSM_INTERRUPT_INFINITE_SLEEP_ON_TIMEOUT)) || wakeupTimeGTcurrentTime))) {
+    if (!t->eventHandler || (0 == e->eventCode && (((fsm->flags & _OFSM_FLAG_INFINITE_SLEEP) && !(_ofsmFlags & _OFSM_FLAG_OFSM_FIRST_ITERATION)) || wakeupTimeGTcurrentTime))) {
         if (!t->eventHandler) {
 #ifdef OFSM_CONFIG_SIMULATION
             _ofsm_debug_printf(4,  "F(%i)G(%i): Handler is not specified, state %i event code %i. Event is ignored.\n", fsmIndex, groupIndex, fsm->currentState, e->eventCode);
         }
-        else if ((fsm->flags & _OFSM_FLAG_INFINITE_SLEEP) && !(_ofsmFlags & _OFSM_FLAG_OFSM_INTERRUPT_INFINITE_SLEEP_ON_TIMEOUT)) {
+        else if ((fsm->flags & _OFSM_FLAG_INFINITE_SLEEP) && !(_ofsmFlags & _OFSM_FLAG_OFSM_FIRST_ITERATION)) {
             _ofsm_debug_printf(4,  "F(%i)G(%i): State Machine is in infinite sleep.\n", fsmIndex, groupIndex);
         }
         else if (wakeupTimeGTcurrentTime) {
@@ -92,7 +92,7 @@ static inline void _ofsm_fsm_process_event(OFSM *fsm, uint8_t groupIndex, uint8_
         fsmState.timeLeftBeforeTimeout = 0;
 
         if(oldFlags & _OFSM_FLAG_INFINITE_SLEEP) {
-            fsmState.timeLeftBeforeTimeout = 0xFFFFFFFF;
+            fsmState.timeLeftBeforeTimeout = (_OFSM_TIME_DATA_TYPE)-1;
         } else {
             if(wakeupTimeGTcurrentTime) {
                 fsmState.timeLeftBeforeTimeout = oldWakeupTime - currentTime; /* time overflow will be accounted for*/
@@ -110,7 +110,7 @@ static inline void _ofsm_fsm_process_event(OFSM *fsm, uint8_t groupIndex, uint8_
         }
     }
 
-    //make a transition
+    /*make a transition*/
 #ifdef OFSM_CONFIG_SIMULATION
     uint8_t prevState = fsm->currentState;
 #endif
@@ -123,10 +123,10 @@ static inline void _ofsm_fsm_process_event(OFSM *fsm, uint8_t groupIndex, uint8_
     }
 #endif
 
-    //check transition delay, assume infinite sleep if new state doesn't accept Timeout Event
+    /*check transition delay, assume infinite sleep if new state doesn't accept Timeout Event*/
     t = _OFSM_GET_TRANSTION(fsm, 0);
     if (!t->eventHandler) {
-        fsm->flags |= _OFSM_FLAG_INFINITE_SLEEP; //set infinite sleep
+        fsm->flags |= _OFSM_FLAG_INFINITE_SLEEP; /*set infinite sleep*/
 #ifdef OFSM_CONFIG_SIMULATION
         delay = -1;
 #endif
@@ -249,18 +249,14 @@ void _ofsm_start() {
     uint8_t timeFlags;
 #ifdef OFSM_CONFIG_SIMULATION
 	bool doReturn = false;
-#else
-#	ifndef OFSM_CONFIG_CUSTOM_HEARTBEAT_PROVIDER
-	_ofsm_heartbeat_proxy_set_time();
-#	endif
 #endif
 
 	/*start main loop*/
     do
     {
         OFSM_CONFIG_ATOMIC_BLOCK(OFSM_CONFIG_ATOMIC_RESTORESTATE) {
-            _ofsmFlags |= _OFSM_FLAG_INFINITE_SLEEP; /*prevents _ofsm_check_timeout() to ever accessing _ofsmWakeupTime and queue timeout while in process*/
-            _ofsmFlags &= ~_OFSM_FLAG_OFSM_EVENT_QUEUED; /*reset event queued flag*/
+            _ofsmFlags |= _OFSM_FLAG_OFSM_IN_PROCESS;   /*prevents _ofsm_check_timeout() to ever accessing _ofsmWakeupTime and queue timeout while in process*/
+            _ofsmFlags &= ~(_OFSM_FLAG_OFSM_EVENT_QUEUED); /*reset event queued flag*/
 #ifdef OFSM_CONFIG_SIMULATION
             if (_ofsmFlags &_OFSM_FLAG_OFSM_SIMULATION_EXIT) {
                 doReturn = true; /*don't return or break here!!, or ATOMIC_BLOCK mutex will remain blocked*/
@@ -303,20 +299,17 @@ void _ofsm_start() {
                 continue;
             }
         }
-        //There is no need for ATOMIC, because _ofsm_check_timeout() will never access _ofsmWakeupTime while in process
-        //		OFSM_CONFIG_ATOMIC_BLOCK(OFSM_CONFIG_ATOMIC_RESTORESTATE) {
-        _ofsmWakeupTime = earliestWakeupTime;
-        _ofsmFlags = (_ofsmFlags & ~_OFSM_FLAG_ALL)|(andedFsmFlags & _OFSM_FLAG_ALL);
-        //		}
 
-        //if scheduled time is in overflow and timer is in overflow reset timer overflow flag
         OFSM_CONFIG_ATOMIC_BLOCK(OFSM_CONFIG_ATOMIC_RESTORESTATE) {
-            if ((_ofsmFlags & _OFSM_FLAG_INFINITE_SLEEP) || ((_ofsmFlags & _OFSM_FLAG_OFSM_TIMER_OVERFLOW) && (_ofsmFlags & _OFSM_FLAG_SCHEDULED_TIME_OVERFLOW)))
+			_ofsmWakeupTime = earliestWakeupTime;
+			_ofsmFlags = (_ofsmFlags & ~_OFSM_FLAG_ALL) | (andedFsmFlags & _OFSM_FLAG_ALL);
+			//if scheduled time is in overflow and timer is in overflow reset timer overflow flag
+			if ((_ofsmFlags & _OFSM_FLAG_INFINITE_SLEEP) || ((_ofsmFlags & _OFSM_FLAG_OFSM_TIMER_OVERFLOW) && (_ofsmFlags & _OFSM_FLAG_SCHEDULED_TIME_OVERFLOW)))
             {
                 _ofsmFlags &= ~(_OFSM_FLAG_OFSM_TIMER_OVERFLOW | _OFSM_FLAG_SCHEDULED_TIME_OVERFLOW);
             }
-            _ofsmFlags &= ~_OFSM_FLAG_OFSM_INTERRUPT_INFINITE_SLEEP_ON_TIMEOUT;
-        }
+			_ofsmFlags &= ~(_OFSM_FLAG_OFSM_FIRST_ITERATION | _OFSM_FLAG_OFSM_IN_PROCESS);
+		}
 #ifndef OFSM_CONFIG_SIMULATION_SCRIPT_MODE
         _ofsm_debug_printf(4,  "O: Entering sleep... Wakeup Time %ld.\n", _ofsmFlags & _OFSM_FLAG_INFINITE_SLEEP ? -1 : (long int)_ofsmWakeupTime);
         OFSM_CONFIG_CUSTOM_ENTER_SLEEP_FUNC();
@@ -342,7 +335,7 @@ void _ofsm_queue_group_event(uint8_t groupIndex, OFSMGroup *group, bool forceNew
     OFSM_CONFIG_ATOMIC_BLOCK(OFSM_CONFIG_ATOMIC_RESTORESTATE) {
         copyNextEventIndex = group->nextEventIndex;
 
-		/*once even is queued we must erase deep sleep flag to indicate that deep sleep was interrupted */
+		/*since even is queued we must erase deep sleep flag to indicate that deep sleep was interrupted and infinite timeout */
 		_ofsmFlags &= ~(_OFSM_FLAG_OFSM_IN_DEEP_SLEEP);
 
         if (!(group->flags & _OFSM_FLAG_GROUP_BUFFER_OVERFLOW)) {
@@ -457,11 +450,10 @@ void ofsm_queue_global_event(bool forceNewEvent, uint8_t eventCode, OFSM_CONFIG_
 static inline void _ofsm_check_timeout()
 {
     /*not need as it is called from within atomic block	OFSM_CONFIG_ATOMIC_BLOCK(OFSM_CONFIG_ATOMIC_RESTORESTATE) { */
-    /*do nothing if infinite sleep*/
-    if (_ofsmFlags & _OFSM_FLAG_INFINITE_SLEEP) {
+    /*do nothing if in process*/
+    if (_ofsmFlags & (_OFSM_FLAG_OFSM_IN_PROCESS | _OFSM_FLAG_INFINITE_SLEEP)) {
         return;
     }
-
     if (_OFSM_TIME_A_GTE_B(_ofsmTime, (_ofsmFlags & _OFSM_FLAG_OFSM_TIMER_OVERFLOW), _ofsmWakeupTime, (_ofsmFlags & _OFSM_FLAG_SCHEDULED_TIME_OVERFLOW))) {
         ofsm_queue_global_event(false, 0, 0); /*this call will wakeup main loop*/
 
@@ -475,8 +467,6 @@ static inline void ofsm_heartbeat(_OFSM_TIME_DATA_TYPE currentTime)
 {
     _OFSM_TIME_DATA_TYPE prevTime;
     OFSM_CONFIG_ATOMIC_BLOCK(OFSM_CONFIG_ATOMIC_RESTORESTATE) {
-		/*once even is queued we must erase deep sleep flag to indicate that deep sleep was interrupted */
-		_ofsmFlags &= ~(_OFSM_FLAG_OFSM_IN_DEEP_SLEEP);
 		prevTime = _ofsmTime;
         _ofsmTime = currentTime;
         if (_ofsmTime < prevTime) {
@@ -618,10 +608,11 @@ void _ofsm_simulation_create_status_report(OFSMSimulationStatusReport *r, uint8_
 
 #ifdef _OFSM_IMPL_SIMULATION_ENTER_SLEEP
 void _ofsm_simulation_enter_sleep() {
+        _ofsmFlags &= ~_OFSM_FLAG_OFSM_IN_PROCESS; /*enable wakeup on timeout*/
         std::unique_lock<std::mutex> lk(cvm);
 
         cv.wait(lk);
-        _ofsmFlags &= ~_OFSM_FLAG_OFSM_EVENT_QUEUED;
+        _ofsmFlags &= ~(_OFSM_FLAG_OFSM_EVENT_QUEUED | _OFSM_FLAG_INFINITE_SLEEP);
         lk.unlock();
 }
 #endif /* _OFSM_IMPL_SIMULATION_ENTER_SLEEP */
@@ -657,7 +648,7 @@ void loop();
 void _ofsm_simulation_fsm_thread(int ignore) {
     setup();
     loop();
-#ifndef OFSM_CONFIG_SIMULATION_SCRIPT
+#ifndef OFSM_CONFIG_SIMULATION_SCRIPT_MODE
     _ofsm_debug_printf(1, "Exiting Loop thread...\n");
 #endif
 }/*_ofsm_simulation_fsm_thread*/
@@ -679,7 +670,7 @@ void _ofsm_simulation_heartbeat_provider_thread(int tickSize) {
             }
         }
         if (doReturn) {
-#ifndef OFSM_CONFIG_SIMULATION_SCRIPT
+#ifndef OFSM_CONFIG_SIMULATION_SCRIPT_MODE
             _ofsm_debug_printf(1, "Exiting Heartbeat provider thread...\n");
 #endif
             return;
@@ -988,7 +979,7 @@ int main(int argc, char* argv[])
 			OFSMGroup *group;
 			OFSM *fsm;
 			/*reset GLOBALS*/
-			_ofsmFlags = (_OFSM_FLAG_INFINITE_SLEEP | _OFSM_FLAG_OFSM_INTERRUPT_INFINITE_SLEEP_ON_TIMEOUT);
+			_ofsmFlags = (_OFSM_FLAG_INFINITE_SLEEP | _OFSM_FLAG_OFSM_FIRST_ITERATION);
 			_ofsmTime = 0;
 			_ofsmWakeupTime = 0;
 			/*reset groups and FSMs*/
@@ -998,9 +989,10 @@ int main(int argc, char* argv[])
 				group->currentEventIndex = group->nextEventIndex = 0;
 				for (k = 0; k < group->groupSize; k++) {
 					fsm = (group->fsms)[k];
-					fsm->flags = _OFSM_FLAG_INFINITE_SLEEP;
+					fsm->flags = (_OFSM_FLAG_INFINITE_SLEEP);
 					fsm->currentState = fsm->simulationInitialState;
 					fsm->skipNextEventCode = (uint8_t)-1;
+					fsm->wakeupTime = 0;
 				}
 			}
         }
@@ -1061,42 +1053,53 @@ static inline void _ofsm_deep_sleep_enable_peripheral() {
 }
 #endif
 
+volatile unsigned long _ofsmWatchdogDelayUs;
+
+/*chip specific MAX watchdog sleep period*/
+#ifndef WDP3
+#	define _OFSM_MAX_SLEEP_MASK  0B111 /*2 sec*/
+#else
+#   define _OFSM_MAX_SLEEP_MASK 0B1001 /*8 sec*/
+#endif
+
 static inline void _ofsm_enter_sleep() {
 uint8_t sleepFlag = 0;
+unsigned long sleepPeriodUs;
 
 	cli(); /*disable interrupts*/
-    while(!(_ofsmFlags & _OFSM_FLAG_OFSM_EVENT_QUEUED)) {
-        /* determine if we need to use watch dog timer */
-        unsigned long sleepPeriodTick = _ofsmWakeupTime - _ofsmTime;
-#if OFSM_CONFIG_TICK_US > 1000L
-        unsigned long sleepPeriodMs = sleepPeriodTick * ((unsigned long)(OFSM_CONFIG_TICK_US/1000L));
-#else
-        unsigned long sleepPeriodMs = (unsigned long)(sleepPeriodTick * OFSM_CONFIG_TICK_US)/1000L;
-#endif
-        if(_ofsmFlags & _OFSM_FLAG_ALLOW_DEEP_SLEEP && sleepPeriodMs >= 16) {
-            sleepFlag |= 2;
-			OFSM_CONFIG_CUSTOM_DEEP_SLEEP_DISABLE_PERIPHERAL_FUNC();
-			_ofsm_enter_deep_sleep(sleepPeriodMs);
-            /*when coming out of deep sleep we always re-enable peripherals right away, as we cannot guarantee next sleep will be a deep sleep again*/
-			OFSM_CONFIG_CUSTOM_DEEP_SLEEP_ENABLE_PERIPHERAL_FUNC();
-        } else {
-            if(sleepFlag & 1) {
-				OFSM_CONFIG_CUSTOM_IDLE_SLEEP_DISABLE_PERIPHERAL_FUNC();
-            }
-            sleepFlag |= 1;
-			_ofsm_enter_idle_sleep(sleepPeriodTick * OFSM_CONFIG_TICK_US);
-            /*after idle sleep we still don't know if we are going to continue sleep or not, postpone enable peripherals until after the sleep*/
-        }
-        /*waked up continues here*/
+	_ofsmFlags &= ~_OFSM_FLAG_OFSM_IN_PROCESS; /*enable wakeup on timeout*/
 
-        /*call heartbeat via milliseconds/microseconds proxy
-        unless custom heartbeat provider is implemented*/
-#ifndef OFSM_CONFIG_CUSTOM_HEARTBEAT_PROVIDER
-		_ofsm_heartbeat_ms_us_proxy();
-#endif
+    while(!(_ofsmFlags & _OFSM_FLAG_OFSM_EVENT_QUEUED)) {
+        /*when in infinite sleep make wakeup time far in the future (128 * 16ms (16384000 us))*/
+        if(_ofsmFlags & _OFSM_FLAG_INFINITE_SLEEP) {
+            _ofsmWakeupTime = _ofsmTime + (128 * 16384000L)/(unsigned long)OFSM_CONFIG_TICK_US;
+        }
+        sleepPeriodUs = OFSM_CONFIG_CUSTOM_SLEEP_TIMER_SET_FUNC();
+        while(!(_ofsmFlags & _OFSM_FLAG_OFSM_EVENT_QUEUED) && sleepPeriodUs > 0L) {
+            if(_ofsmFlags & _OFSM_FLAG_ALLOW_DEEP_SLEEP && sleepPeriodUs >= 16000L) {
+                sleepFlag |= 2;
+                OFSM_CONFIG_CUSTOM_DEEP_SLEEP_DISABLE_PERIPHERAL_FUNC();
+                _ofsm_enter_deep_sleep(sleepPeriodUs);
+                /*when coming out of deep sleep we always re-enable peripherals right away, as we cannot guarantee that next sleep will be a deep sleep again*/
+                OFSM_CONFIG_CUSTOM_DEEP_SLEEP_ENABLE_PERIPHERAL_FUNC();
+            } else {
+                if(!(sleepFlag & 1)) {
+                    OFSM_CONFIG_CUSTOM_IDLE_SLEEP_DISABLE_PERIPHERAL_FUNC();
+                }
+                sleepFlag |= 1;
+                _ofsm_enter_idle_sleep(sleepPeriodUs);
+                /*after idle sleep we still don't know if we are going to continue sleep or not, postpone enable peripherals until after the sleep*/
+            }
+            /*waked up continues here*/
+
+            /*next call will be calling heartbeat via milliseconds/microseconds proxy
+            unless custom heartbeat provider is implemented*/
+            sleepPeriodUs = OFSM_CONFIG_CUSTOM_SLEEP_TIMER_GET_TIME_LEFT_US_FUNC();
+        }
     }
 
     /* enable interrupts; disable sleep */
+    _ofsmFlags |= _OFSM_FLAG_OFSM_IN_PROCESS;
 	sei();
 	sleep_disable();
     if(sleepFlag & 1) {
@@ -1105,43 +1108,40 @@ uint8_t sleepFlag = 0;
 }
 
 #ifndef OFSM_CONFIG_CUSTOM_HEARTBEAT_PROVIDER
-/*Current time in microseconds. Used by heartbeat proxy to calculate current time in ticks.*/
-unsigned long _ofsmCurrentProxyTimeUs;
 
-static inline void _ofsm_heartbeat_proxy_set_time() {
-	_ofsmCurrentProxyTimeUs = (unsigned long)micros();
+static unsigned long _ofsmTimerStartTimeUs;
+static unsigned long _ofsmSleepPeriodUs;
+static unsigned long _ofsmTimeBeforeSleep;
+
+static inline unsigned long _ofsm_sleep_timer_set() {
+    _ofsmTimerStartTimeUs = OFSM_CONFIG_CUSTOM_MICROS_FUNC();
+    _ofsmSleepPeriodUs = (_ofsmWakeupTime - _ofsmTime) * OFSM_CONFIG_TICK_US;
+    _ofsmTimeBeforeSleep = _ofsmTime;
+    return _ofsmSleepPeriodUs;
 }
 
-static inline void _ofsm_heartbeat_ms_us_proxy() {
-	unsigned long curArduinoTimeUs = (unsigned long)micros();
-	unsigned long diff = (unsigned long)(curArduinoTimeUs - _ofsmCurrentProxyTimeUs);
-	/* don't call heartbeat until diff is at least one tick in duration */
-	if (diff >= OFSM_CONFIG_TICK_US) {
-		ofsm_heartbeat(_ofsmTime + (unsigned long)(diff / OFSM_CONFIG_TICK_US));
-		_ofsmCurrentProxyTimeUs = curArduinoTimeUs;
-
-		/* timing debug helper */
-		/*
-		Serial.print(" _ofsmCurrentProxyTimeUs: ");
-		Serial.print(_ofsmCurrentProxyTimeUs);
-		Serial.println();
-		delay(50);
-		cli();
-		*/
-	}
+static inline unsigned long _ofsm_sleep_timer_get_time_left_us() {
+    unsigned long diff = OFSM_CONFIG_CUSTOM_MICROS_FUNC() - _ofsmTimerStartTimeUs;
+    unsigned long fullTicks = diff / OFSM_CONFIG_TICK_US;
+    /*call heartbeat when we have at least 1 full ticks, adjust timer start time*/
+    ofsm_heartbeat(_ofsmTimeBeforeSleep + fullTicks);
+    if(diff >= _ofsmSleepPeriodUs) {
+        return 0;
+    }
+    return _ofsmSleepPeriodUs - diff;
 }
-#endif
+#endif /*OFSM_CONFIG_CUSTOM_HEARTBEAT_PROVIDER*/
 
 static inline void _ofsm_enter_idle_sleep(unsigned long sleepPeriodUs) {
 
 	/* timing debug helper */
-	/*
-	Serial.print("ISUs: ");
+    /*
+	Serial.print("ISus: ");
 	Serial.print(sleepPeriodUs);
 	Serial.println();
 	delay(50);
 	cli();
-	*/
+    */
 
 	set_sleep_mode(SLEEP_MODE_IDLE);
 	sleep_enable();
@@ -1158,10 +1158,14 @@ static inline void _ofsm_enter_idle_sleep(unsigned long sleepPeriodUs) {
 	/* In Arduino environment the prescaler is set so that timer0 ticks every 64 clock cycles, and the
 	 the overflow handler is called every 256 ticks. */
 #	define MICROSECONDS_PER_TIMER0_OVERFLOW (clockCyclesToMicroseconds(64 * 256))
+    /* the fractional number of milliseconds per timer0 overflow. we shift right
+    * by three to fit these numbers into a byte. (for the clock speeds we care
+    * about - 8 and 16 MHz - this doesn't lose precision.) */
+#   define FRACT_INC ((MICROSECONDS_PER_TIMER0_OVERFLOW % 1000) >> 3)
+#   define FRACT_MAX (1000 >> 3)
+    /* the whole number of milliseconds per timer0 overflow*/
+#   define MILLIS_INC (MICROSECONDS_PER_TIMER0_OVERFLOW / 1000)
 #endif
-
-volatile uint16_t _ofsmWatchdogDelayMs;
-
 
 #ifdef OFSM_IMPL_WATCHDOG_INTERRUPT_HANDLER
 extern volatile unsigned long timer0_millis; /*Arduino timer0 variable*/
@@ -1173,9 +1177,10 @@ static inline void _ofsm_wdt_vector() {
     then time will not be updated as we don't know how big of a delay was between getting to sleep and external interrupt
     */
 	if(_ofsmFlags & _OFSM_FLAG_OFSM_IN_DEEP_SLEEP) {
-		timer0_millis += _ofsmWatchdogDelayMs;
+		unsigned long overflowCount = _ofsmWatchdogDelayUs / MICROSECONDS_PER_TIMER0_OVERFLOW;
+		timer0_millis += overflowCount * MILLIS_INC + (unsigned long)(overflowCount/FRACT_MAX);
 		/*update Arduino overflow counter*/
-		timer0_overflow_count += (unsigned long)((_ofsmWatchdogDelayMs * 1000L) / MICROSECONDS_PER_TIMER0_OVERFLOW);
+		timer0_overflow_count += overflowCount;
 	}
 }
 #endif
@@ -1184,46 +1189,34 @@ ISR(WDT_vect) {
 	OFSM_CONFIG_CUSTOM_WATCHDOG_INTERRUPT_HANDLER_FUNC();
 }
 
-/*chip specific MAX watchdog sleep period*/
-#ifndef WDP3
-#	define _OFSM_MAX_SLEEP_MASK  0B111 /*2 sec*/
-#else
-#   define _OFSM_MAX_SLEEP_MASK 0B1001 /*8 sec*/
-#endif
-
-static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodMs) {
+static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodUs) {
     uint16_t wdtMask = 0;
 
-	if(sleepPeriodMs >= 8192L) {
-		wdtMask = _OFSM_MAX_SLEEP_MASK; /*8 sec*/
-		_ofsmWatchdogDelayMs = 16L << _OFSM_MAX_SLEEP_MASK;
-	} else {
-		uint16_t probe = 16;
-		for(wdtMask = 0; wdtMask < _OFSM_MAX_SLEEP_MASK && probe <= (uint16_t)sleepPeriodMs; wdtMask++) {
-			probe  = probe << 1;
-		}
-		wdtMask--;
-        _ofsmWatchdogDelayMs = probe >> 1;
-	}
-	_ofsmFlags |= _OFSM_FLAG_OFSM_IN_DEEP_SLEEP; /*set flag indicating deep sleep. It must be cleared on wakeup or event queuing.*/
+    if(sleepPeriodUs >= 8192000L) {
+        wdtMask = _OFSM_MAX_SLEEP_MASK; /*8 sec*/
+        _ofsmWatchdogDelayUs = 16000L << _OFSM_MAX_SLEEP_MASK;
+    } else {
+        unsigned long probe = 16000L;
+        for (wdtMask = 0; probe <= (sleepPeriodUs-(16000L << wdtMask)); wdtMask++) {
+            probe = probe << 1;
+        }
+        _ofsmWatchdogDelayUs = probe;
+    }
 
     /*adjust wdtMask: shift bit: 3 into WDP3 position (bit: 5)*/
     wdtMask = (((wdtMask & 0B1000) << 2) | (wdtMask & 0B111));
 
-	/* timing debug helper */
-	/*
-	sei();
-	Serial.print("DSMs: ");
-	Serial.print(sleepPeriodMs);
-	Serial.print(" wdtMask: ");
-	Serial.print(wdtMask, BIN);
-	Serial.println();
-	delay(50);
-	cli();
-	*/
-
-	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-	sleep_enable();
+    /* timing debug helper */
+    /*
+    sei();
+    Serial.print("DSus: ");
+    Serial.print(sleepPeriodUs, DEC);
+    Serial.print(" wdtMask: ");
+    Serial.print(wdtMask, BIN);
+    Serial.println();
+    delay(100);
+    cli();
+    */
 
     /* NOTE: without this delay, deep sleep may fail.
     * Having this 2us timeout causes yielding to outstanding interrupt handlers, to let them finish.
@@ -1234,6 +1227,9 @@ static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodMs) {
     delayMicroseconds(2);
 	cli();
 
+    _ofsmFlags |= _OFSM_FLAG_OFSM_IN_DEEP_SLEEP; /*set flag indicating deep sleep. It must be cleared on wakeup or event queuing.*/
+	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	sleep_enable();
 	MCUSR &= ~(1 << WDRF); /*Watchdog Reset Flag*/
 	wdt_reset();  /* prepare */
 	WDTCSR |= ((1 << WDCE) | (1 << WDE)); /*enable change; timing sequence goes from here*/
