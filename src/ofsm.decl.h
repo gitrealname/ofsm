@@ -26,7 +26,7 @@
 #	include <locale>
 #   include <string.h>
 #	include <stdio.h>
-#   define _OFSM_TIME_DATA_TYPE uint32_t //make it the same size as AVR unsigned long
+#   define _OFSM_TIME_DATA_TYPE unsigned long
 #else
 #   define _OFSM_TIME_DATA_TYPE unsigned long
 #endif
@@ -158,7 +158,7 @@ OFSM_CONFIG_ATOMIC_BLOCK(OFSM_CONFIG_ATOMIC_RESTORESTATE) { \
 
 #ifdef OFSM_CONFIG_SIMULATION_SCRIPT_MODE_WAKEUP_TYPE
 #	define OFSM_CONFIG_SIMULATION_SCRIPT_MODE
-#endif 
+#endif
 
 #ifndef OFSM_CONFIG_SIMULATION_SCRIPT_MODE_WAKEUP_TYPE
 #   define OFSM_CONFIG_SIMULATION_SCRIPT_MODE_WAKEUP_TYPE 3
@@ -371,6 +371,16 @@ Flags
 #define _OFSM_FLAG_OFSM_IN_PROCESS		0x100
 
 /*------------------------------------------------
+Global variables
+-------------------------------------------------*/
+extern OFSMGroup**				        _ofsmGroups;
+extern uint8_t                          _ofsmGroupCount;
+extern OFSMState*						_ofsmCurrentFsmState;
+extern volatile uint16_t                _ofsmFlags;
+extern volatile _OFSM_TIME_DATA_TYPE    _ofsmWakeupTime;
+extern volatile _OFSM_TIME_DATA_TYPE    _ofsmTime;
+
+/*------------------------------------------------
 Macros
 -------------------------------------------------*/
 #define fsm_prevent_transition()					((_ofsmCurrentFsmState->fsm)[0].flags |= _OFSM_FLAG_FSM_PREVENT_TRANSITION)
@@ -405,24 +415,21 @@ Macros
         outCurrentTime = _ofsmTime; \
     }
 
+#define ofsm_query_get_group(groupIndex) (_ofsmGroups[groupIndex])
+#define ofsm_query_get_fsm(groupIndex, fsmIndex) ((ofsm_query_get_group(groupIndex)->fsms)[fsmIndex])
+
+#define ofsm_query_flags() (_ofsmFlags)
+#define ofsm_query_group_flags(groupIndex) (ofsm_query_get_group(groupIndex)->flags)
+#define ofsm_query_fsm_time_left_before_timeout(groupIndex, fsmIndex) ((ofsm_query_get_fsm(groupIndex, fsmIndex)->wakeupTime == 0 || ofsm_query_get_fsm(groupIndex, fsmIndex)->wakeupTime < _ofsmTime) ? 0 : ofsm_query_get_fsm(groupIndex, fsmIndex)->wakeupTime - _ofsmTime)
+#define ofsm_query_fsm_next_state(groupIndex, fsmIndex) (ofsm_query_get_fsm(groupIndex, fsmIndex)->currentState)
+#define ofsm_query_fsm_flags(groupIndex, fsmIndex) (ofsm_query_get_fsm(groupIndex, fsmIndex)->flags)
+
 #define _OFSM_GET_TRANSTION(fsm, eventCode) ((OFSMTransition*)( (fsm->transitionTableEventCount * fsm->currentState +  eventCode) * sizeof(OFSMTransition) + (char*)fsm->transitionTable) )
 
 /*time comparison*/
 /*ao, bo - 'o' means overflow*/
 #define _OFSM_TIME_A_GT_B(a, ao, b, bo)  ( (a  >  b) && (ao || !bo) )
 #define _OFSM_TIME_A_GTE_B(a, ao, b, bo) ( (a  >=  b) && (ao || !bo) )
-
-/*------------------------------------------------
-Global variables
--------------------------------------------------*/
-extern OFSMGroup**				        _ofsmGroups;
-extern uint8_t                          _ofsmGroupCount;
-extern OFSMState*						_ofsmCurrentFsmState;
-extern volatile uint16_t                _ofsmFlags;
-extern volatile _OFSM_TIME_DATA_TYPE    _ofsmWakeupTime;
-extern volatile _OFSM_TIME_DATA_TYPE    _ofsmTime;
-
-extern volatile uint16_t				_ofsmWatchdogDelayMs;
 
 /*----------------------------------------------
 Setup helper macros

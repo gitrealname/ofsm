@@ -1,6 +1,6 @@
 /*
 ofsm.h - "Orchestrated" Finite State Machines library (OFSM) for Micro-controllers (MCU)
-Copyright (c) 2016 gitrealname.  All right reserved.
+Copyright (c) 2016 Maksym Moyseyev.  All right reserved.
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -155,6 +155,9 @@ OFSM can be "shaped" in many different ways using configuration switches. NOTE: 
 #define OFSM_CONFIG_SUPPORT_INITIALIZATION_HANDLER              //Default: undefined. When defined OFMS implements supports for initialization handlers. This will consume a little bit of memory, as handler place holder and initialization logic will be implemented.
 #define OFSM_CONFIG_SUPPORT_EVENT_DATA                          //Default: undefined. When defined OFMS will support event data.
 #define OFSM_CONFIG_TICK_US                                     //Default: 1000 (1 millisecond). OFSM tick size in microseconds
+#define OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_IDLE_SLEEP    //Default: undefined.
+#define OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_DEEP_SLEEP    //Default: undefined.
+#define OFSM_CONFIG_QUERY_API_ENABLED                           //Default: undefined. When defined, ofsm_query_.... get implemented.
 
 //By default OFSM piggybacks Arduino timer0 interrupt and micros()/millis() function to call heartbeat,
 //Custom heartbeat provider is expected to call ofsm_hearbeat(unsigned long currentTicktime);

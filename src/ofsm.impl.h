@@ -1146,12 +1146,17 @@ static inline void _ofsm_enter_idle_sleep(unsigned long sleepPeriodUs) {
 	set_sleep_mode(SLEEP_MODE_IDLE);
 	sleep_enable();
 
-	sleep_bod_disable();
+#ifdef OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_IDLE_SLEEP
+    sleep_bod_disable();
+#endif // OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_IDLE_SLEEP
 	sei();
 	sleep_cpu();
 
 	/*wakeup here*/
     cli();
+#ifdef OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_IDLE_SLEEP
+    sleep_bod_enable();
+#endif // OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_IDLE_SLEEP
 }
 
 #ifndef MICROSECONDS_PER_TIMER0_OVERFLOW
@@ -1235,14 +1240,20 @@ static inline void _ofsm_enter_deep_sleep(unsigned long sleepPeriodUs) {
 	WDTCSR |= ((1 << WDCE) | (1 << WDE)); /*enable change; timing sequence goes from here*/
 	WDTCSR = ((1 << WDIE) | wdtMask);   /* set interrupt mode, set prescaler */
 
+#ifdef OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_DEEP_SLEEP
 	/* turn off brown-out detector*/
 	sleep_bod_disable();
+#endif // OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_DEEP_SLEEP
 
 	sei(); /*next instruction is guaranteed to be executed*/
 	sleep_cpu();
 	/*------------------------------------------*/
     /*waked up here*/
 	cli();
+#ifdef OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_DEEP_SLEEP
+	/* turn on brown-out detector*/
+	sleep_bod_enable();
+#endif // OFSM_CONFIG_DISABLE_BROWN_OUT_DETECTOR_ON_DEEP_SLEEP
 
     wdt_disable();
     _ofsmFlags &= ~_OFSM_FLAG_OFSM_IN_DEEP_SLEEP;
